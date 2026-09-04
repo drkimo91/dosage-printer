@@ -1,0 +1,31 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pillow pywin32 pyinstaller
+
+      - name: Build EXE
+        run: |
+          pyinstaller --noconsole --onefile --hidden-import=win32print --hidden-import=win32ui --name="PharmacyDosagePrinter" app.py
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PharmacyDosagePrinter-Windows
+          path: dist/PharmacyDosagePrinter.exe
