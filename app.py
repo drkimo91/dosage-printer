@@ -496,9 +496,7 @@ class MainPharmacyApp:
         total_labels = sum(item["copies"] for item in self.batch_queue)
         confirm = messagebox.askyesno(
             "تأكيد الطباعة", 
-            f"سيتم طباعة الروشتة كاملة بعدد {len(self.batch_queue)} صنف بإجمالي {total_labels} ملصق.
-هل تريد المتابعة؟"
-        )
+                        f"سيتم طباعة الروشتة كاملة بعدد {len(self.batch_queue)} صنف بإجمالي {total_labels} ملصق.\nهل تريد المتابعة؟"
         if not confirm:
             return
 
