@@ -110,9 +110,10 @@ def draw_text_centered(draw, center_x, center_y, text, font, fill="black"):
 
 def render_label_image(pharmacy_name, drug_name, patient_name, dosage, date_str):
     """
-    توليد صورة ملصق بدقة 203 DPI لمقاس 38mm x 25mm:
-    38mm = ~304 pixels
-    25mm = ~200 pixels
+    توليد صورة ملصق بدقة 203 DPI لمقاس 38mm x 25mm (~304 × 200 بكسل).
+    المساحة صغيرة جداً فمش بتكفي غير الجرعة نفسها، فالملصق بيطبع الجرعة فقط
+    (من غير اسم الصيدلية، اسم الدواء، التاريخ، أو أي إطار) مع تكبيرها لتملأ المساحة،
+    وتصغير حجم الخط تلقائياً لو النص طويل عشان يفضل داخل حدود الملصق.
     """
     width = 304
     height = 200
@@ -120,36 +121,19 @@ def render_label_image(pharmacy_name, drug_name, patient_name, dosage, date_str)
     draw = ImageDraw.Draw(img)
 
     font_bold_path = "C:/Windows/Fonts/arialbd.ttf"
-    font_regular_path = "C:/Windows/Fonts/arial.ttf"
 
-    f_header = load_font(font_bold_path, 16)
-    f_patient = load_font(font_regular_path, 14)
-    f_dosage = load_font(font_bold_path, 22)
-    f_date = load_font(font_regular_path, 12)
+    max_width = width - 16
+    max_height = height - 16
+    font_size = 34
+    min_font_size = 14
+    f_dosage = load_font(font_bold_path, font_size)
+    bbox = draw.textbbox((0, 0), dosage, font=f_dosage)
+    while (bbox[2] - bbox[0] > max_width or bbox[3] - bbox[1] > max_height) and font_size > min_font_size:
+        font_size -= 2
+        f_dosage = load_font(font_bold_path, font_size)
+        bbox = draw.textbbox((0, 0), dosage, font=f_dosage)
 
-    # رأس الاستيكر: اسم الصيدلية أعلى الهامش على أقصى اليمين (اتجاه القراءة العربي)، والتاريخ على أقصى اليسار
-    if pharmacy_name:
-        draw_text_right_aligned(draw, width - 10, 8, pharmacy_name, f_header)
-    if date_str:
-        draw.text((10, 10), date_str, fill="black", font=f_date)
-
-    draw.line([(8, 30), (width - 8, 30)], fill="black", width=1)
-
-    content_top = 38
-    # اسم المريض إن وجد (اسم الدواء لم يعد يُطبع بناء على طلب العميل)
-    if patient_name:
-        draw_text_right_aligned(draw, width - 10, content_top, f"المريض: {patient_name}", f_patient)
-        box_top = content_top + 26
-    else:
-        box_top = content_top
-
-    # إطار الجرعة فقط
-    box_bottom = height - 12
-    draw.rectangle([(8, box_top), (width - 8, box_bottom)], outline="black", width=2)
-
-    box_center_x = (8 + (width - 8)) / 2
-    box_center_y = (box_top + box_bottom) / 2
-    draw_text_centered(draw, box_center_x, box_center_y, dosage, f_dosage)
+    draw_text_centered(draw, width / 2, height / 2, dosage, f_dosage)
 
     return img
 
