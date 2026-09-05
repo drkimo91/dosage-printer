@@ -12,7 +12,9 @@ import sys
 import os
 import json
 import datetime
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageTk
+import arabic_reshaper
+from bidi.algorithm import get_display
 
 # مكتبات الواجهة الرسومية
 import tkinter as tk
@@ -33,6 +35,7 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 APP_ICON_FILE = resource_path("app_icon.ico")
+APP_LOGO_FILE = resource_path("app_logo.png")
 
 DOSAGES_FILE = "dosages_config.json"
 DEFAULT_DOSAGES = [
@@ -81,32 +84,47 @@ def get_available_printers():
 
 def load_font(path, size):
     """
-    يحمّل الخط مع تفعيل محرك الرسم RAQM (المدمج مع Pillow)، وهو المسؤول عن:
-    1. وصل حروف الكلمة العربية ببعضها بشكلها الصحيح.
-    2. ترتيب النص من اليمين لليسار تلقائياً.
-    بدون RAQM، Pillow يرسم كل حرف عربي منفصل وبترتيب اليسار لليمين (الحروف تطلع مقلوبة/مفصولة).
+    يحمّل الخط بمحرك الرسم الأساسي (BASIC) صراحة. تشكيل النص العربي وترتيبه
+    من اليمين لليسار بيتم يدويًا قبل الرسم (بدالة prepare_arabic) بمكتبات
+    بايثون خالصة (arabic_reshaper + python-bidi) مالهاش أي اعتماد على مكتبات
+    نظام خارجية زي raqm، اللي ممكن متتجمعش صح جوه ملف exe بعد التحزيم
+    بـ PyInstaller وتسبب رجوع الحروف لشكلها المقلوب/المفصول.
     """
     if os.path.exists(path):
         try:
-            return ImageFont.truetype(path, size, layout_engine=ImageFont.Layout.RAQM)
+            return ImageFont.truetype(path, size, layout_engine=ImageFont.Layout.BASIC)
         except Exception:
             return ImageFont.truetype(path, size)
     return ImageFont.load_default()
 
-def draw_text_right_aligned(draw, right_edge_x, y, text, font, fill="black"):
-    """يرسم نص محاذى لليمين عند إحداثي right_edge_x (مناسب للعناوين العربية)"""
-    bbox = draw.textbbox((0, 0), text, font=font)
-    text_w = bbox[2] - bbox[0]
-    draw.text((right_edge_x - text_w, y), text, fill=fill, font=font)
+def prepare_arabic(text):
+    """
+    يجهز أي نص عربي للرسم بمكتبة PIL بشكل صحيح (استدعها مرة واحدة فقط لكل نص):
+    1. reshape: يوصل حروف الكلمة ببعضها بشكلها الصحيح (بدل ما تطبع منفصلة).
+    2. get_display: يرتب النص بصريًا من اليمين لليسار (RTL) بدل ما يطبع مقلوب.
+    """
+    if not text:
+        return ""
+    try:
+        reshaped_text = arabic_reshaper.reshape(text)
+        return get_display(reshaped_text)
+    except Exception:
+        return text
 
-def draw_text_centered(draw, center_x, center_y, text, font, fill="black"):
-    """يرسم نص في منتصف نقطة معينة أفقيا ورأسيا"""
-    bbox = draw.textbbox((0, 0), text, font=font)
+def draw_prepared_text_right_aligned(draw, right_edge_x, y, prepared_text, font, fill="black"):
+    """يرسم نصًا تم تجهيزه مسبقًا بـ prepare_arabic، محاذى لليمين عند إحداثي right_edge_x"""
+    bbox = draw.textbbox((0, 0), prepared_text, font=font)
+    text_w = bbox[2] - bbox[0]
+    draw.text((right_edge_x - text_w, y), prepared_text, fill=fill, font=font)
+
+def draw_prepared_text_centered(draw, center_x, center_y, prepared_text, font, fill="black"):
+    """يرسم نصًا تم تجهيزه مسبقًا بـ prepare_arabic، في منتصف نقطة معينة أفقيا ورأسيا"""
+    bbox = draw.textbbox((0, 0), prepared_text, font=font)
     text_w = bbox[2] - bbox[0]
     text_h = bbox[3] - bbox[1]
     x = center_x - text_w / 2
     y = center_y - text_h / 2 - bbox[1]
-    draw.text((x, y), text, fill=fill, font=font)
+    draw.text((x, y), prepared_text, fill=fill, font=font)
 
 def render_label_image(pharmacy_name, drug_name, patient_name, dosage, date_str):
     """
@@ -126,14 +144,15 @@ def render_label_image(pharmacy_name, drug_name, patient_name, dosage, date_str)
     max_height = height - 16
     font_size = 34
     min_font_size = 14
+    prepared_dosage = prepare_arabic(dosage)
     f_dosage = load_font(font_bold_path, font_size)
-    bbox = draw.textbbox((0, 0), dosage, font=f_dosage)
+    bbox = draw.textbbox((0, 0), prepared_dosage, font=f_dosage)
     while (bbox[2] - bbox[0] > max_width or bbox[3] - bbox[1] > max_height) and font_size > min_font_size:
         font_size -= 2
         f_dosage = load_font(font_bold_path, font_size)
-        bbox = draw.textbbox((0, 0), dosage, font=f_dosage)
+        bbox = draw.textbbox((0, 0), prepared_dosage, font=f_dosage)
 
-    draw_text_centered(draw, width / 2, height / 2, dosage, f_dosage)
+    draw_prepared_text_centered(draw, width / 2, height / 2, prepared_dosage, f_dosage)
 
     return img
 
@@ -271,6 +290,20 @@ class MainPharmacyApp:
     def setup_ui(self):
         style = ttk.Style()
         style.theme_use("clam")
+
+        # هيدر الصيدلية (اللوجو)
+        header_frame = ttk.Frame(self.root, padding=(10, 8))
+        header_frame.pack(fill=tk.X)
+        try:
+            if os.path.exists(APP_LOGO_FILE):
+                logo_img = Image.open(APP_LOGO_FILE)
+                logo_img.thumbnail((220, 80))
+                self.logo_photo = ImageTk.PhotoImage(logo_img)
+                ttk.Label(header_frame, image=self.logo_photo).pack()
+        except Exception:
+            pass
+
+        ttk.Separator(self.root, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=10)
 
         # الشريط العلوي: إعدادات الصيدلية والطابعة
         top_bar = ttk.Frame(self.root, padding="10")
@@ -436,12 +469,12 @@ class MainPharmacyApp:
         dosage = self.dosage_var.get().strip()
         copies = self.copies_var.get()
 
-        if not drug or not dosage:
-            messagebox.showwarning("نقص بيانات", "يرجى كتابة اسم الدواء والجرعة أولاً.")
+        if not dosage:
+            messagebox.showwarning("نقص بيانات", "يرجى اختيار أو كتابة الجرعة أولاً.")
             return
 
         item = {
-            "drug": drug,
+            "drug": drug or "بدون اسم",
             "dosage": dosage,
             "copies": max(1, copies),
             "patient": self.patient_var.get().strip(),
@@ -456,7 +489,7 @@ class MainPharmacyApp:
         self.dosage_var.set("")
         self.copies_var.set(1)
         self.drug_entry.focus()
-        self.status_var.set(f"تمت إضافة {drug} للقائمة. إجمالي الروشتة: {len(self.batch_queue)} أصناف.")
+        self.status_var.set(f"تمت الإضافة للقائمة. إجمالي الروشتة: {len(self.batch_queue)} أصناف.")
 
     def remove_selected_from_batch(self):
         sel = self.tree.selection()
@@ -477,8 +510,8 @@ class MainPharmacyApp:
         dosage = self.dosage_var.get().strip()
         copies = max(1, self.copies_var.get())
 
-        if not drug or not dosage:
-            messagebox.showwarning("نقص بيانات", "يرجى كتابة اسم الدواء والجرعة للطباعة الفورية.")
+        if not dosage:
+            messagebox.showwarning("نقص بيانات", "يرجى اختيار أو كتابة الجرعة للطباعة الفورية.")
             return
 
         printer = self.printer_var.get()
@@ -496,7 +529,7 @@ class MainPharmacyApp:
 
         try:
             print_image_to_printer(img, printer, copies=copies)
-            self.status_var.set(f"تمت طباعة {copies} ملصق لـ {drug} بنجاح.")
+            self.status_var.set(f"تمت طباعة {copies} ملصق بنجاح.")
             self.drug_var.set("")
             self.dosage_var.set("")
             self.copies_var.set(1)
