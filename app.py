@@ -27,6 +27,13 @@ try:
 except ImportError:
     WIN32_AVAILABLE = False
 
+def resource_path(relative_path):
+    """يحدد مسار الملف سواء كان البرنامج شغال كسكريبت أو كملف exe مجمّع (PyInstaller)"""
+    base_path = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
+
+APP_ICON_FILE = resource_path("app_icon.ico")
+
 DOSAGES_FILE = "dosages_config.json"
 DEFAULT_DOSAGES = [
     "قرص بعد الأكل 3 مرات",
@@ -228,6 +235,11 @@ class MainPharmacyApp:
         self.root = root
         self.root.title("منظومة طباعة جرعات الأدوية والروشتات (38 × 25 مم)")
         self.root.geometry("860x680")
+        try:
+            if os.path.exists(APP_ICON_FILE):
+                self.root.iconbitmap(APP_ICON_FILE)
+        except Exception:
+            pass
 
         # المتغيرات الأساسية
         self.pharmacy_var = tk.StringVar(value="صيدليات دواء")

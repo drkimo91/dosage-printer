@@ -22,7 +22,7 @@ jobs:
 
       - name: Build EXE
         run: |
-          pyinstaller --noconsole --onefile --hidden-import=win32print --hidden-import=win32ui --name="PharmacyDosagePrinter" app.py
+          pyinstaller --noconsole --onefile --icon="app_icon.ico" --add-data "app_icon.ico;." --hidden-import=win32print --hidden-import=win32ui --name="PharmacyDosagePrinter" app.py
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
