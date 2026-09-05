@@ -79,6 +79,35 @@ def get_available_printers():
             pass
     return printers
 
+def load_font(path, size):
+    """
+    يحمّل الخط مع تفعيل محرك الرسم RAQM (المدمج مع Pillow)، وهو المسؤول عن:
+    1. وصل حروف الكلمة العربية ببعضها بشكلها الصحيح.
+    2. ترتيب النص من اليمين لليسار تلقائياً.
+    بدون RAQM، Pillow يرسم كل حرف عربي منفصل وبترتيب اليسار لليمين (الحروف تطلع مقلوبة/مفصولة).
+    """
+    if os.path.exists(path):
+        try:
+            return ImageFont.truetype(path, size, layout_engine=ImageFont.Layout.RAQM)
+        except Exception:
+            return ImageFont.truetype(path, size)
+    return ImageFont.load_default()
+
+def draw_text_right_aligned(draw, right_edge_x, y, text, font, fill="black"):
+    """يرسم نص محاذى لليمين عند إحداثي right_edge_x (مناسب للعناوين العربية)"""
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    draw.text((right_edge_x - text_w, y), text, fill=fill, font=font)
+
+def draw_text_centered(draw, center_x, center_y, text, font, fill="black"):
+    """يرسم نص في منتصف نقطة معينة أفقيا ورأسيا"""
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    x = center_x - text_w / 2
+    y = center_y - text_h / 2 - bbox[1]
+    draw.text((x, y), text, fill=fill, font=font)
+
 def render_label_image(pharmacy_name, drug_name, patient_name, dosage, date_str):
     """
     توليد صورة ملصق بدقة 203 DPI لمقاس 38mm x 25mm:
@@ -92,39 +121,35 @@ def render_label_image(pharmacy_name, drug_name, patient_name, dosage, date_str)
 
     font_bold_path = "C:/Windows/Fonts/arialbd.ttf"
     font_regular_path = "C:/Windows/Fonts/arial.ttf"
-    
-    try:
-        f_header = ImageFont.truetype(font_bold_path, 16) if os.path.exists(font_bold_path) else ImageFont.load_default()
-        f_drug = ImageFont.truetype(font_bold_path, 20) if os.path.exists(font_bold_path) else ImageFont.load_default()
-        f_patient = ImageFont.truetype(font_regular_path, 14) if os.path.exists(font_regular_path) else ImageFont.load_default()
-        f_dosage = ImageFont.truetype(font_bold_path, 18) if os.path.exists(font_bold_path) else ImageFont.load_default()
-        f_date = ImageFont.truetype(font_regular_path, 12) if os.path.exists(font_regular_path) else ImageFont.load_default()
-    except Exception:
-        f_header = f_drug = f_patient = f_dosage = f_date = ImageFont.load_default()
 
-    # رأس الاستيكر
+    f_header = load_font(font_bold_path, 16)
+    f_patient = load_font(font_regular_path, 14)
+    f_dosage = load_font(font_bold_path, 22)
+    f_date = load_font(font_regular_path, 12)
+
+    # رأس الاستيكر: اسم الصيدلية أعلى الهامش على أقصى اليمين (اتجاه القراءة العربي)، والتاريخ على أقصى اليسار
     if pharmacy_name:
-        draw.text((10, 8), pharmacy_name, fill="black", font=f_header)
+        draw_text_right_aligned(draw, width - 10, 8, pharmacy_name, f_header)
     if date_str:
-        draw.text((width - 75, 10), date_str, fill="black", font=f_date)
+        draw.text((10, 10), date_str, fill="black", font=f_date)
 
     draw.line([(8, 30), (width - 8, 30)], fill="black", width=1)
 
-    # اسم الصنف
-    draw.text((10, 36), drug_name, fill="black", font=f_drug)
-
-    # اسم المريض إن وجد
+    content_top = 38
+    # اسم المريض إن وجد (اسم الدواء لم يعد يُطبع بناء على طلب العميل)
     if patient_name:
-        draw.text((10, 68), f"المريض: {patient_name}", fill="black", font=f_patient)
-        dosage_y = 96
+        draw_text_right_aligned(draw, width - 10, content_top, f"المريض: {patient_name}", f_patient)
+        box_top = content_top + 26
     else:
-        dosage_y = 78
+        box_top = content_top
 
-    # إطار الجرعة
-    box_top = dosage_y
-    box_bottom = min(height - 12, dosage_y + 60)
+    # إطار الجرعة فقط
+    box_bottom = height - 12
     draw.rectangle([(8, box_top), (width - 8, box_bottom)], outline="black", width=2)
-    draw.text((15, box_top + 14), dosage, fill="black", font=f_dosage)
+
+    box_center_x = (8 + (width - 8)) / 2
+    box_center_y = (box_top + box_bottom) / 2
+    draw_text_centered(draw, box_center_x, box_center_y, dosage, f_dosage)
 
     return img
 
